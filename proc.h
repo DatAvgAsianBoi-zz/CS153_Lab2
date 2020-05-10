@@ -51,6 +51,9 @@ struct proc {
   char name[16];               // Process name (debugging)
   int status;                  // Exit Status
   int wait_pid;                // Wait until this pid is ZOMBIE
+  int priority;                //Priority - LAB 2
+  uint startTime;
+  uint TA_Time;     
 };
 
 // Process memory is laid out contiguously, low addresses first:

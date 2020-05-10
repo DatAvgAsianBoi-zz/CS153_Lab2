@@ -88,6 +88,7 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->priority = 15;                 //Lab 2
 
   release(&ptable.lock);
 
@@ -371,12 +372,14 @@ waitpid(int pid, int *status, int options)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+// Lab 2 - Account for priority
 void
 scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
+  int max_priority = 31;
 
   for(;;){
     // Enable interrupts on this processor.
@@ -384,27 +387,53 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+    //Lab 2 - Find the process with the highest priority
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
+      if(max_priority > p->priority)
+        max_priority = p->priority;
+    }
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+      //Run the first process with the highest priority
+      if(p->priority == max_priority){
+        // Switch to chosen process.  It is the process's job
+        // to release ptable.lock and then reacquire it
+        // before jumping back to us.
+        c->proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
+        p->priority++;
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+        swtch(&(c->scheduler), p->context);
+        switchkvm();
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      //If process is not ran, increase priority
+      else{
+        if(p->priority > 0)
+          p->priority--;
+      }
     }
     release(&ptable.lock);
 
   }
+}
+
+//Lab 2 - setPriority functions
+void
+setPriority(int priority)
+{
+  struct proc *cur = myproc();
+  if(priority < 0 || priority > 31)
+    return;       //Do nothing if priority is out of bound
+  cur->priority = priority;
+  return;
 }
 
 // Enter scheduler.  Must hold only ptable.lock
@@ -583,4 +612,25 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+uint
+currenttime(void)
+{
+  uint ticks_cnt;
+  acquire(&tickslock);
+  ticks_cnt = ticks;
+  release(&tickslock);
+  return ticks_cnt;
+}
+
+inline uint
+turnaround(void)
+{
+  uint time;
+  struct proc* cur = myproc();
+  time = currenttime();
+  cur->TA_Time = time - cur->startTime;
+  cprintf("Turnaround time for this process was: %d\n", time);
+  return time;
 }

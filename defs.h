@@ -121,6 +121,9 @@ int             wait(int *status);
 void            wakeup(void*);
 void            yield(void);
 int             waitpid(int pid, int *status, int options);
+void            setPriority(int priority);
+uint		    turnaround(void);
+uint		    currenttime(void);
 
 
 // swtch.S
