@@ -1,0 +1,145 @@
+diff -r xv6/Makefile Lab01/Makefile
+35c35
+< #TOOLPREFIX = 
+---
+> #TOOLPREFIX =
+183a184
+> 	_test\
+191c192
+< clean: 
+---
+> clean:
+253c254
+< 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
+---
+> 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c test.c zombie.c\
+diff -r xv6/defs.h Lab01/defs.h
+107c107
+< void            exit(void);
+---
+> void            exit(int status);
+120c120
+< int             wait(void);
+---
+> int             wait(int *status);
+122a123,124
+> int             waitpid(int pid, int *status, int options);
+> 
+diff -r xv6/proc.c Lab01/proc.c
+217a218
+>   np->status = 0;
+228c229
+< exit(void)
+---
+> exit(int status)
+265a267
+>   curproc->status = status;   // Exit Status
+273c275
+< wait(void)
+---
+> wait(int *status)
+297a300
+>         p->status = *status;  // Exit Status
+313a317,365
+> // Lab 1 waitpid()
+> int
+> waitpid(int pid, int *status, int options)
+> {
+>   struct proc *p;
+>   int havekids, temp_pid;
+>   struct proc *curproc = myproc();
+> 
+>   acquire(&ptable.lock);
+> 
+>   for(;;){
+>     // Scan through table looking for exited children.
+>     havekids = 0;
+>     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+>       if(p->pid == pid){
+>         havekids = 1;
+> 
+>         if(p->state == ZOMBIE){
+>           // Found the pid
+>           temp_pid = p->pid;
+>           kfree(p->kstack);
+>           p->kstack = 0;
+>           freevm(p->pgdir);
+>           p->pid = 0;
+>           p->parent = 0;
+>           p->name[0] = 0;
+>           p->killed = 0;
+>           p->state = UNUSED;
+>           *status = p->status;  // Returned Exit Status
+>           p->status = 0;
+>           release(&ptable.lock);
+>           return temp_pid;
+>         }
+>         else{
+>           curproc->wait_pid = p->pid;
+>           break;
+>         }
+>       }
+>     }
+>     if(havekids == 0 || curproc->killed){
+>       release(&ptable.lock);
+>       return -1;
+>     }
+>     else if(havekids == 1){
+>       sleep(curproc, &ptable.lock);
+>     }
+>   }
+> }
+> 
+diff -r xv6/proc.h Lab01/proc.h
+51a52,53
+>   int status;                  // Exit Status
+>   int wait_pid;                // Wait until this pid is ZOMBIE
+diff -r xv6/syscall.c Lab01/syscall.c
+63c63
+<  
+---
+> 
+103a104
+> extern int sys_waitpid(void);
+110a112
+> [SYS_waitpid] sys_waitpid,
+diff -r xv6/syscall.h Lab01/syscall.h
+22a23
+> #define SYS_waitpid  22
+diff -r xv6/sysproc.c Lab01/sysproc.c
+19c19,22
+<   exit();
+---
+>   int status;
+>   if(argint(0, &status) < 0)
+>       return -1;
+>   exit(status);
+26c29,44
+<   return wait();
+---
+>   char* status; // argptr uses char*
+>   if(argptr(0, &status, 4) < 0)
+>       return -1;
+>   return wait((int*)status);
+> }
+> 
+> // Lab 1 waitpid()
+> int
+> sys_waitpid()
+> {
+>   int pid;
+>   char *status;
+>   int options;
+>   if(argint(0, &pid) < 0 || argptr(0, &status, 4) < 0  || argint(0, &options) < 0 )
+>       return -1;
+>   return waitpid(pid, (int*)status, options);
+Only in Lab01: test.c
+diff -r xv6/user.h Lab01/user.h
+6,7c6,7
+< int exit(void) __attribute__((noreturn));
+< int wait(void);
+---
+> int exit(int status) __attribute__((noreturn));
+> int wait(int *status);
+25a26,28
+> int waitpid(int pid, int *status, int options);
